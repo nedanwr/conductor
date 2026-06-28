@@ -1,4 +1,30 @@
 // Cache service contract. Boundary source of truth.
+//
+// The read tier. A no-op passthrough in the slice: Fetch forwards straight
+// through to Repo Storage. Heat-based promotion is deferred. Reuses the
+// repostorage GitRequest boundary type so the passthrough is byte-exact.
 syntax = "proto3";
 
 package gitserver.cache.v1;
+
+import "gitserver/repostorage/v1/repostorage.proto";
+
+// FetchRequest mirrors repostorage.FetchRequest so the passthrough is byte-exact;
+// it reuses the shared GitRequest boundary type.
+message FetchRequest {
+  oneof payload {
+    gitserver.repostorage.v1.GitRequest request = 1;
+    bytes data = 2;
+  }
+}
+
+// FetchResponse carries raw bytes streamed back from Repo Storage.
+message FetchResponse {
+  bytes data = 1;
+}
+
+// CacheService wraps reads through to Repo Storage. Only the
+// read path (Fetch) goes through the cache; writes bypass it.
+service CacheService {
+  rpc Fetch(stream FetchRequest) returns (stream FetchResponse);
+}

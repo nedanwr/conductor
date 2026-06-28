@@ -1,4 +1,100 @@
 // RepoStorage service contract. Boundary source of truth.
+//
+// This file also defines GitRequest — the normalized, transport-agnostic
+// gateway→repo-storage payload. It lives here, alongside the only service that
+// consumes it on the per-request path; Cache imports it.
 syntax = "proto3";
 
 package gitserver.repostorage.v1;
+
+// Operation distinguishes the two git wire operations crossing the boundary.
+enum Operation {
+  OPERATION_UNSPECIFIED = 0;
+  OPERATION_FETCH = 1;   // upload-pack (clone/fetch)
+  OPERATION_RECEIVE = 2; // receive-pack (push)
+}
+
+// GrantLevel is the decided permission level (the authorization grant).
+// Defined as its own type so it can grow into a signed/verifiable assertion
+// later without changing the call shape.
+enum GrantLevel {
+  GRANT_LEVEL_UNSPECIFIED = 0;
+  GRANT_LEVEL_READ = 1;
+  GRANT_LEVEL_WRITE = 2;
+  GRANT_LEVEL_ADMIN = 3;
+}
+
+// Principal is the authenticated identity, carried for attribution and hooks
+// (reflog, future provenance) — NEVER consulted to allow/deny.
+message Principal {
+  string user_id = 1;     // empty when anonymous
+  bool anonymous = 2;     // true for unauthenticated public fetch
+}
+
+// Grant is the authorization decision made at the Gateway. Repo Storage trusts
+// it; it does not re-evaluate user permissions.
+message Grant {
+  GrantLevel level = 1;
+}
+
+// ProtocolParams carries the negotiated git wire protocol.
+message ProtocolParams {
+  int32 version = 1;             // 2 (preferred) or 0 (fallback)
+  repeated string capabilities = 2;
+}
+
+// GitRequest is the boundary payload. Transport-agnostic: nothing here reveals
+// SSH vs HTTPS.
+message GitRequest {
+  string repo_id = 1;            // resolved internal repo UUID
+  Operation operation = 2;
+  Principal principal = 3;
+  Grant grant = 4;
+  ProtocolParams protocol = 5;
+  string correlation_id = 6;     // threaded from the edge for tracing
+}
+
+message CreateRepoRequest {
+  string repo_id = 1;            // internal repo UUID
+  string default_branch = 2;
+}
+
+message CreateRepoResponse {}
+
+// FetchRequest is a single client→server frame on the upload-pack stream. The
+// first frame MUST carry `request` (the GitRequest metadata); subsequent frames
+// carry raw pktline bytes in `data`. Pktline framing is git's concern; we
+// shuttle bytes.
+message FetchRequest {
+  oneof payload {
+    GitRequest request = 1;
+    bytes data = 2;
+  }
+}
+
+// FetchResponse is a single server→client frame: raw bytes streamed from
+// upload-pack's stdout.
+message FetchResponse {
+  bytes data = 1;
+}
+
+// ReceiveRequest mirrors FetchRequest for the receive-pack (push) stream.
+message ReceiveRequest {
+  oneof payload {
+    GitRequest request = 1;
+    bytes data = 2;
+  }
+}
+
+// ReceiveResponse is a single server→client frame from receive-pack's stdout.
+message ReceiveResponse {
+  bytes data = 1;
+}
+
+// RepoStorageService is the stateful storage tier. Refs mutate only via the
+// ref-update primitive inside Receive.
+service RepoStorageService {
+  rpc CreateRepo(CreateRepoRequest) returns (CreateRepoResponse);
+  rpc Fetch(stream FetchRequest) returns (stream FetchResponse);
+  rpc Receive(stream ReceiveRequest) returns (stream ReceiveResponse);
+}

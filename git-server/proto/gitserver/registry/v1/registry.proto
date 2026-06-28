@@ -1,4 +1,39 @@
 // Registry service contract. Boundary source of truth.
+//
+// Control plane, off the per-request path: the placement directory mapping a
+// repo UUID to its storage node. Membership/discovery and the service trust
+// anchor are trivial in --mode=all and are not on the network boundary in the
+// slice — they live as in-process seams in internal/registry/.
 syntax = "proto3";
 
 package gitserver.registry.v1;
+
+// Node identifies a storage node in the placement directory.
+message Node {
+  string id = 1;       // storage node id
+  string address = 2;  // dial address (empty/self in --mode=all)
+}
+
+message ResolvePlacementRequest {
+  string repo_id = 1;  // internal repo UUID
+}
+
+message ResolvePlacementResponse {
+  Node node = 1;
+}
+
+message CreatePlacementRequest {
+  string repo_id = 1;
+  string node_id = 2;
+}
+
+message CreatePlacementResponse {
+  Node node = 1;
+}
+
+// RegistryService is the placement directory. Consulted on Gateway cache
+// miss, never per request.
+service RegistryService {
+  rpc ResolvePlacement(ResolvePlacementRequest) returns (ResolvePlacementResponse);
+  rpc CreatePlacement(CreatePlacementRequest) returns (CreatePlacementResponse);
+}
