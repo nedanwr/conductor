@@ -65,5 +65,6 @@ down:
 	docker compose down
 
 ## migrate: apply goose migrations against the configured Postgres.
+## Driver + DSN come from GOOSE_DRIVER / GOOSE_DBSTRING in .env.
 migrate:
-	go tool goose -dir migrations postgres "$(GOOSE_DBSTRING)" up
+	go tool goose -dir migrations up
