@@ -4,6 +4,8 @@
 package transport
 
 import (
+	"errors"
+
 	"connectrpc.com/connect"
 
 	"github.com/nedanwr/conductor/git-server/internal/core/giterr"
@@ -37,6 +39,40 @@ func ConnectCodeFor(kind giterr.Kind) connect.Code {
 	default:
 		return connect.CodeUnknown
 	}
+}
+
+// KindForConnectCode is the inverse of ConnectCodeFor: it recovers the typed
+// giterr.Kind a Connect code most likely represents. It lets a Connect client
+// adapter re-raise a remote failure as the same typed Kind the in-process impl
+// would have returned, so consumers behind the core interface see one error
+// vocabulary regardless of transport.
+func KindForConnectCode(code connect.Code) giterr.Kind {
+	switch code {
+	case connect.CodePermissionDenied:
+		return giterr.KindUnauthorized
+	case connect.CodeNotFound:
+		return giterr.KindRepoNotFound
+	case connect.CodeFailedPrecondition:
+		return giterr.KindRefRejected
+	case connect.CodeUnavailable:
+		return giterr.KindPlacementMiss
+	default:
+		return giterr.KindUnknown
+	}
+}
+
+// FromConnectError maps a Connect client error back to a typed giterr.Error,
+// preserving the original as the cause. A nil error returns nil; a non-Connect
+// error is wrapped as KindUnknown.
+func FromConnectError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var cerr *connect.Error
+	if errors.As(err, &cerr) {
+		return giterr.Wrap(KindForConnectCode(cerr.Code()), err, "%s", cerr.Message())
+	}
+	return giterr.Wrap(giterr.KindUnknown, err, "%s", err.Error())
 }
 
 // AsConnectError converts err into a *connect.Error with the code mapped from
