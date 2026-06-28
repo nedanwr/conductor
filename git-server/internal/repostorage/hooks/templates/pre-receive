@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# Server-side pre-receive hook. receive-pack invokes it once per push with one
+# line per ref update on stdin: "<old-oid> <new-oid> <ref-name>". Exiting non-zero
+# rejects the entire push; the message on stderr is relayed to the client.
+#
+# This template enforces the baseline rejection rule: a push may only touch refs
+# under refs/heads/ or refs/tags/. The provenance/event seam will grow from here.
+set -eu
+
+while read -r _old _new ref; do
+	case "$ref" in
+	refs/heads/* | refs/tags/*) ;;
+	*)
+		echo "ref-update rejected: $ref is outside refs/heads/ and refs/tags/" >&2
+		exit 1
+		;;
+	esac
+done
+
+exit 0
