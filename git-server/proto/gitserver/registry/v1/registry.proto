@@ -1,0 +1,4 @@
+// Registry service contract. Boundary source of truth.
+syntax = "proto3";
+
+package gitserver.registry.v1;

@@ -1,0 +1,4 @@
+// Cache service contract. Boundary source of truth.
+syntax = "proto3";
+
+package gitserver.cache.v1;

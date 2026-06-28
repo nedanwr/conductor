@@ -1,0 +1,4 @@
+// RepoStorage service contract. Boundary source of truth.
+syntax = "proto3";
+
+package gitserver.repostorage.v1;
