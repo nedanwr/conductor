@@ -1,0 +1,22 @@
+# git-server is a self-contained Go module (outside Bun's workspaces). These
+# rules are module-relative; the repo-root .gitignore also covers most of them,
+# but keeping them here makes the module's ignores travel with it.
+
+# Compiled artifact (output of `make build`).
+/bin/
+
+# Go test / coverage output.
+*.test
+*.out
+coverage.*
+
+# Go workspace files (local-only; never committed in a single-module repo).
+go.work
+go.work.sum
+
+# Local env + dev secrets (host keys, TLS material) — runtime, never the repo.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
