@@ -1,0 +1,32 @@
+// Enrollment service contract. Boundary source of truth.
+//
+// The service trust domain's bootstrap door: a joining node presents a
+// pre-shared bootstrap secret and a certificate-signing request, and the
+// cluster trust anchor returns a short-lived signed identity plus the root to
+// trust. This is the one path consulted at enrollment (and rotation); steady
+// state peer-to-peer auth is direct mTLS against the returned root and never
+// touches this service. It is kept logically separate from the placement
+// directory so "the root of all trust" and "where everything is" are not one
+// compromise surface.
+syntax = "proto3";
+
+package gitserver.enroll.v1;
+
+message EnrollRequest {
+  string bootstrap_token = 1;  // pre-shared secret gating who may enroll
+  string role = 2;             // requested service role (gateway, repo-storage, cache)
+  string node_id = 3;          // requesting node's id
+  bytes csr = 4;               // DER-encoded PKCS#10 certificate-signing request
+}
+
+message EnrollResponse {
+  bytes certificate = 1;    // DER-encoded signed leaf certificate
+  bytes ca_bundle = 2;      // DER-encoded trust root to verify peers against
+  int64 not_after_unix = 3; // leaf expiry, Unix seconds; the node rotates before this
+}
+
+// EnrollService issues service identities at node enrollment. Bootstrap-gated,
+// off the per-request path.
+service EnrollService {
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
