@@ -1,6 +1,6 @@
 # --- Internal planning docs (do not commit) ---
 SPEC.md
-GIT_SERVER_BUILD_PLAN.md
+KERNEL_BUILD_PLAN.md
 
 # --- Dependencies ---
 node_modules/
@@ -12,6 +12,9 @@ dist/
 build/
 out/
 *.tsbuildinfo
+
+# --- Kernel local runtime data (libsql file mode) ---
+.orchestrator/
 
 # --- Go (git-server) ---
 /git-server/bin/
