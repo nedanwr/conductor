@@ -16,8 +16,13 @@ func toProtoGitRequest(req gitreq.GitRequest) *v1.GitRequest {
 			UserId:    req.Principal.UserID,
 			Anonymous: req.Principal.Anonymous,
 		},
-		Grant:         &v1.Grant{Level: toProtoGrantLevel(req.Grant.Level)},
-		Protocol:      &v1.ProtocolParams{Version: int32(req.Protocol.Version), Capabilities: req.Protocol.Capabilities},
+		Grant: &v1.Grant{Level: toProtoGrantLevel(req.Grant.Level)},
+		Protocol: &v1.ProtocolParams{
+			Version:       int32(req.Protocol.Version),
+			Capabilities:  req.Protocol.Capabilities,
+			Stateless:     req.Protocol.Stateless,
+			AdvertiseRefs: req.Protocol.AdvertiseRefs,
+		},
 		CorrelationId: req.CorrelationID,
 	}
 }
@@ -37,7 +42,12 @@ func fromProtoGitRequest(p *v1.GitRequest) gitreq.GitRequest {
 		req.Principal = gitreq.Principal{UserID: pr.GetUserId(), Anonymous: pr.GetAnonymous()}
 	}
 	if pp := p.GetProtocol(); pp != nil {
-		req.Protocol = gitreq.ProtocolParams{Version: int(pp.GetVersion()), Capabilities: pp.GetCapabilities()}
+		req.Protocol = gitreq.ProtocolParams{
+			Version:       int(pp.GetVersion()),
+			Capabilities:  pp.GetCapabilities(),
+			Stateless:     pp.GetStateless(),
+			AdvertiseRefs: pp.GetAdvertiseRefs(),
+		}
 	}
 	return req
 }

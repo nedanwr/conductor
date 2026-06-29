@@ -45,11 +45,21 @@ type Grant struct {
 	Level GrantLevel
 }
 
-// ProtocolParams carries the negotiated git wire protocol.
+// ProtocolParams carries the negotiated git wire protocol. The shape fields
+// describe how the git wire exchange is framed, not which transport carried it:
+// Repo Storage selects the pack invocation from them and still cannot tell SSH
+// from HTTPS.
 type ProtocolParams struct {
 	// Version is 2 (preferred) or 0 (fallback).
 	Version      int
 	Capabilities []string
+	// Stateless marks a single request/response round with no persistent
+	// server-side state (the git "stateless-rpc" shape). A persistent
+	// bidirectional channel (e.g. an SSH session) leaves it false.
+	Stateless bool
+	// AdvertiseRefs requests only the ref/capability advertisement, with no pack
+	// negotiation — the opening round of a stateless exchange.
+	AdvertiseRefs bool
 }
 
 // GitRequest is the normalized, transport-agnostic payload. Nothing in it

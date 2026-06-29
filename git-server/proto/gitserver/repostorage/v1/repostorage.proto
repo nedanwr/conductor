@@ -37,10 +37,20 @@ message Grant {
   GrantLevel level = 1;
 }
 
-// ProtocolParams carries the negotiated git wire protocol.
+// ProtocolParams carries the negotiated git wire protocol. The shape fields
+// (stateless, advertise_refs) describe the interaction pattern of the git wire
+// exchange, not the transport it arrived on — Repo Storage chooses the pack
+// invocation from them while remaining unable to tell SSH from HTTPS.
 message ProtocolParams {
   int32 version = 1;             // 2 (preferred) or 0 (fallback)
   repeated string capabilities = 2;
+  // stateless marks a single request/response round with no persistent
+  // server-side state (the git "stateless-rpc" shape). A persistent
+  // bidirectional channel leaves it false.
+  bool stateless = 3;
+  // advertise_refs requests only the ref/capability advertisement, with no pack
+  // negotiation — the opening round of a stateless exchange.
+  bool advertise_refs = 4;
 }
 
 // GitRequest is the boundary payload. Transport-agnostic: nothing here reveals

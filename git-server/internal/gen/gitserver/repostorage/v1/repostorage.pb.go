@@ -232,11 +232,21 @@ func (x *Grant) GetLevel() GrantLevel {
 	return GrantLevel_GRANT_LEVEL_UNSPECIFIED
 }
 
-// ProtocolParams carries the negotiated git wire protocol.
+// ProtocolParams carries the negotiated git wire protocol. The shape fields
+// (stateless, advertise_refs) describe the interaction pattern of the git wire
+// exchange, not the transport it arrived on — Repo Storage chooses the pack
+// invocation from them while remaining unable to tell SSH from HTTPS.
 type ProtocolParams struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Version       int32                  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"` // 2 (preferred) or 0 (fallback)
-	Capabilities  []string               `protobuf:"bytes,2,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Version      int32                  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"` // 2 (preferred) or 0 (fallback)
+	Capabilities []string               `protobuf:"bytes,2,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	// stateless marks a single request/response round with no persistent
+	// server-side state (the git "stateless-rpc" shape). A persistent
+	// bidirectional channel leaves it false.
+	Stateless bool `protobuf:"varint,3,opt,name=stateless,proto3" json:"stateless,omitempty"`
+	// advertise_refs requests only the ref/capability advertisement, with no pack
+	// negotiation — the opening round of a stateless exchange.
+	AdvertiseRefs bool `protobuf:"varint,4,opt,name=advertise_refs,json=advertiseRefs,proto3" json:"advertise_refs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -283,6 +293,20 @@ func (x *ProtocolParams) GetCapabilities() []string {
 		return x.Capabilities
 	}
 	return nil
+}
+
+func (x *ProtocolParams) GetStateless() bool {
+	if x != nil {
+		return x.Stateless
+	}
+	return false
+}
+
+func (x *ProtocolParams) GetAdvertiseRefs() bool {
+	if x != nil {
+		return x.AdvertiseRefs
+	}
+	return false
 }
 
 // GitRequest is the boundary payload. Transport-agnostic: nothing here reveals
@@ -728,10 +752,12 @@ const file_gitserver_repostorage_v1_repostorage_proto_rawDesc = "" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1c\n" +
 	"\tanonymous\x18\x02 \x01(\bR\tanonymous\"C\n" +
 	"\x05Grant\x12:\n" +
-	"\x05level\x18\x01 \x01(\x0e2$.gitserver.repostorage.v1.GrantLevelR\x05level\"N\n" +
+	"\x05level\x18\x01 \x01(\x0e2$.gitserver.repostorage.v1.GrantLevelR\x05level\"\x93\x01\n" +
 	"\x0eProtocolParams\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\x05R\aversion\x12\"\n" +
-	"\fcapabilities\x18\x02 \x03(\tR\fcapabilities\"\xcf\x02\n" +
+	"\fcapabilities\x18\x02 \x03(\tR\fcapabilities\x12\x1c\n" +
+	"\tstateless\x18\x03 \x01(\bR\tstateless\x12%\n" +
+	"\x0eadvertise_refs\x18\x04 \x01(\bR\radvertiseRefs\"\xcf\x02\n" +
 	"\n" +
 	"GitRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12A\n" +
