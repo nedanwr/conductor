@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/nedanwr/conductor/git-server/internal/core/giterr"
+	"github.com/nedanwr/conductor/git-server/internal/core/gitreq"
 	"github.com/nedanwr/conductor/git-server/internal/git"
 )
 
@@ -189,7 +190,7 @@ func TestReceiveSerializes(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = prim.RunReceive(ctx, "repo-1", "/unused", env, strings.NewReader(""), &bytes.Buffer{})
+			_ = prim.RunReceive(ctx, "repo-1", "/unused", gitreq.ProtocolParams{}, env, strings.NewReader(""), &bytes.Buffer{})
 		}()
 	}
 	wg.Wait()

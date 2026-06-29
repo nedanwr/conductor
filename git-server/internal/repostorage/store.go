@@ -82,7 +82,7 @@ func (s *Store) Receive(ctx context.Context, req gitreq.GitRequest, r io.Reader,
 	if err != nil {
 		return err
 	}
-	return s.primitive.RunReceive(ctx, req.RepoID, path, gitEnvForRequest(req.Protocol), r, w)
+	return s.primitive.RunReceive(ctx, req.RepoID, path, req.Protocol, gitEnvForRequest(req.Protocol), r, w)
 }
 
 // resolve maps a repo UUID to its on-disk path and confirms the repo exists; a

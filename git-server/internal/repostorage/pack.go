@@ -20,7 +20,7 @@ import (
 func runUploadPack(ctx context.Context, runner *git.Runner, repoPath string, proto gitreq.ProtocolParams, r io.Reader, w io.Writer) error {
 	var stderr bytes.Buffer
 	err := runner.Run(ctx, git.Spec{
-		Args:   []string{"upload-pack", repoPath},
+		Args:   packArgs("upload-pack", repoPath, proto),
 		Env:    gitEnvForRequest(proto),
 		Stdin:  r,
 		Stdout: w,
@@ -30,6 +30,22 @@ func runUploadPack(ctx context.Context, runner *git.Runner, repoPath string, pro
 		return giterr.Wrap(giterr.KindGitExec, err, "upload-pack: %s", strings.TrimSpace(stderr.String()))
 	}
 	return nil
+}
+
+// packArgs builds the pack-program invocation from the request's protocol shape.
+// A persistent bidirectional channel runs the program plain (the stateful stdio
+// protocol); a stateless exchange runs it with --stateless-rpc, and the opening
+// advertisement round adds --advertise-refs. The shape is a wire-protocol
+// property, so the same program serves every transport without branching on one.
+func packArgs(program, repoPath string, proto gitreq.ProtocolParams) []string {
+	args := []string{program}
+	if proto.Stateless {
+		args = append(args, "--stateless-rpc")
+	}
+	if proto.AdvertiseRefs {
+		args = append(args, "--advertise-refs")
+	}
+	return append(args, repoPath)
 }
 
 // gitBaseEnv is the explicit base environment for a git child. It inherits the

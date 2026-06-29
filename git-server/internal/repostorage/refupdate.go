@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/nedanwr/conductor/git-server/internal/core/giterr"
+	"github.com/nedanwr/conductor/git-server/internal/core/gitreq"
 	"github.com/nedanwr/conductor/git-server/internal/git"
 )
 
@@ -58,14 +59,14 @@ func (p *Primitive) lockFor(repoID string) *sync.Mutex {
 // hook enforces the rejection rules during this call; git's native lockfiles make
 // each accepted ref update atomic. This is the receive-pack door onto the
 // primitive: refs only move because receive-pack runs here.
-func (p *Primitive) RunReceive(ctx context.Context, repoID, repoPath string, env []string, r io.Reader, w io.Writer) error {
+func (p *Primitive) RunReceive(ctx context.Context, repoID, repoPath string, proto gitreq.ProtocolParams, env []string, r io.Reader, w io.Writer) error {
 	lock := p.lockFor(repoID)
 	lock.Lock()
 	defer lock.Unlock()
 
 	var stderr bytes.Buffer
 	err := p.runner.Run(ctx, git.Spec{
-		Args:   []string{"receive-pack", repoPath},
+		Args:   packArgs("receive-pack", repoPath, proto),
 		Env:    env,
 		Stdin:  r,
 		Stdout: w,
