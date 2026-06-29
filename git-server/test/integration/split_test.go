@@ -23,6 +23,27 @@ import (
 // storage and placement — by network here, by method call there. Nothing in any
 // service knows which binding it received.
 func TestSplitDeployment(t *testing.T) {
+	runSplitDeployment(t, false)
+}
+
+// TestSplitDeploymentMutualTLS runs the same split fleet with service identity
+// switched on: each node enrolls with the registry's trust anchor for a
+// short-lived identity at startup, and every internal call between the edge and
+// its peers is mutually authenticated over mTLS against the shared trust root. An
+// unenrolled or untrusted caller could not complete a single internal request —
+// yet clone and push still succeed and authZ is still enforced, so hardening the
+// transport changes nothing the git client can observe. Topology and security
+// posture are config; the source is untouched.
+func TestSplitDeploymentMutualTLS(t *testing.T) {
+	runSplitDeployment(t, true)
+}
+
+// runSplitDeployment boots a gateway / repo-storage / registry fleet as separate
+// processes and drives the full clone/push/authZ matrix against it. With identity
+// on, peers talk mTLS and the registry also serves the bootstrap enrollment
+// endpoint; with it off, they talk cleartext h2c. The body is otherwise identical,
+// which is the point: the deployment topology and trust posture are configuration.
+func runSplitDeployment(t *testing.T, identity bool) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		t.Skip("DATABASE_URL not set; skipping split-deployment acceptance")
@@ -58,17 +79,41 @@ func TestSplitDeployment(t *testing.T) {
 	gatewayCfg := app.LoadConfig(app.ModeGateway)
 	gatewayCfg.HTTPSAddr = freeAddr(t)
 	gatewayCfg.SSHAddr = freeAddr(t)
-	gatewayCfg.RegistryURL = "http://" + registryAddr
-	gatewayCfg.RepoStorageURL = "http://" + storageAddr
+
+	// Peers are reached by scheme matching the trust posture: https for mTLS,
+	// http for cleartext h2c.
+	scheme := "http://"
+	if identity {
+		scheme = "https://"
+	}
+	gatewayCfg.RegistryURL = scheme + registryAddr
+	gatewayCfg.RepoStorageURL = scheme + storageAddr
+
+	var waitAddrs []string
+	if identity {
+		// The registry is also the trust anchor: it serves the bootstrap
+		// enrollment endpoint, and every node presents the shared token to enroll.
+		const token = "split-bootstrap-token"
+		enrollAddr := freeAddr(t)
+		enrollURL := "http://" + enrollAddr
+		for _, c := range []*app.Config{&registryCfg, &storageCfg, &gatewayCfg} {
+			c.ServiceIdentity = true
+			c.BootstrapToken = token
+		}
+		registryCfg.EnrollAddr = enrollAddr
+		storageCfg.EnrollURL = enrollURL
+		gatewayCfg.EnrollURL = enrollURL
+		waitAddrs = append(waitAddrs, enrollAddr)
+	}
 
 	// Boot each role as its own process over loopback. Storage and registry come
 	// up first so the edge's peers are reachable when it starts serving.
 	ctx, cancel := context.WithCancel(context.Background())
 	fleet := startFleet(t, ctx, registryCfg, storageCfg, gatewayCfg)
-	waitListening(t, registryAddr)
-	waitListening(t, storageAddr)
-	waitListening(t, gatewayCfg.HTTPSAddr)
-	waitListening(t, gatewayCfg.SSHAddr)
+	waitAddrs = append(waitAddrs, registryAddr, storageAddr, gatewayCfg.HTTPSAddr, gatewayCfg.SSHAddr)
+	for _, addr := range waitAddrs {
+		waitListening(t, addr)
+	}
 
 	// Provision through the admin verbs, exactly as the co-located case does. The
 	// repo is placed on the split node id so the edge's router accepts it.
