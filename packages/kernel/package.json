@@ -1,0 +1,24 @@
+{
+  "name": "@conductor/kernel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@conductor/shared-types": "workspace:*",
+    "@libsql/client": "^0.15.0",
+    "drizzle-orm": "^0.44.0",
+    "effect": "^4.0.0-beta.91"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.0",
+    "typescript": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}
