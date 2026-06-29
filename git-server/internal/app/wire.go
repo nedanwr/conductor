@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/nedanwr/conductor/git-server/internal/auth"
+	"github.com/nedanwr/conductor/git-server/internal/auth/service"
 	"github.com/nedanwr/conductor/git-server/internal/auth/user"
 	connectcache "github.com/nedanwr/conductor/git-server/internal/cache"
 	corecache "github.com/nedanwr/conductor/git-server/internal/core/cache"
@@ -16,6 +17,7 @@ import (
 	"github.com/nedanwr/conductor/git-server/internal/gateway/https"
 	gwssh "github.com/nedanwr/conductor/git-server/internal/gateway/ssh"
 	cachev1connect "github.com/nedanwr/conductor/git-server/internal/gen/gitserver/cache/v1/cachev1connect"
+	enrollv1connect "github.com/nedanwr/conductor/git-server/internal/gen/gitserver/enroll/v1/enrollv1connect"
 	registryv1connect "github.com/nedanwr/conductor/git-server/internal/gen/gitserver/registry/v1/registryv1connect"
 	repostoragev1connect "github.com/nedanwr/conductor/git-server/internal/gen/gitserver/repostorage/v1/repostoragev1connect"
 	"github.com/nedanwr/conductor/git-server/internal/git"
@@ -51,9 +53,9 @@ func wire(ctx context.Context, cfg Config) (*runtime, error) {
 	case ModeGateway:
 		return wireGateway(ctx, cfg, rt)
 	case ModeRepoStorage:
-		return wireRepoStorage(cfg, rt)
+		return wireRepoStorage(ctx, cfg, rt)
 	case ModeCache:
-		return wireCache(cfg, rt)
+		return wireCache(ctx, cfg, rt)
 	case ModeRegistry:
 		return wireRegistry(ctx, cfg, rt)
 	default:
@@ -94,7 +96,11 @@ func wireGateway(ctx context.Context, cfg Config, rt *runtime) (*runtime, error)
 		return nil, err
 	}
 
-	httpClient := transport.NewH2CClient()
+	mat, err := enroll(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	httpClient := peerClient(mat)
 	var reg coreregistry.Registry = registry.NewConnectClient(httpClient, cfg.RegistryURL)
 	var store corestorage.RepoStorage = repostorage.NewConnectClient(httpClient, cfg.RepoStorageURL)
 
@@ -107,24 +113,32 @@ func wireGateway(ctx context.Context, cfg Config, rt *runtime) (*runtime, error)
 
 // wireRepoStorage runs only the storage service, exposed over Connect for remote
 // peers to reach.
-func wireRepoStorage(cfg Config, rt *runtime) (*runtime, error) {
+func wireRepoStorage(ctx context.Context, cfg Config, rt *runtime) (*runtime, error) {
 	store, err := newStore(cfg)
 	if err != nil {
 		return nil, err
 	}
+	mat, err := enroll(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
 	path, handler := repostoragev1connect.NewRepoStorageServiceHandler(repostorage.NewConnectHandler(store))
-	rt.servers = append(rt.servers, newConnectServer(cfg, path, handler))
+	rt.servers = append(rt.servers, newConnectServer(cfg, path, handler, mat))
 	return rt, nil
 }
 
 // wireCache runs only the read-tier cache, passing through to a remote storage
 // peer and exposing its own Connect endpoint.
-func wireCache(cfg Config, rt *runtime) (*runtime, error) {
-	httpClient := transport.NewH2CClient()
+func wireCache(ctx context.Context, cfg Config, rt *runtime) (*runtime, error) {
+	mat, err := enroll(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	httpClient := peerClient(mat)
 	var store corestorage.RepoStorage = repostorage.NewConnectClient(httpClient, cfg.RepoStorageURL)
 	var c corecache.Cache = connectcache.New(store)
 	path, handler := cachev1connect.NewCacheServiceHandler(connectcache.NewConnectHandler(c))
-	rt.servers = append(rt.servers, newConnectServer(cfg, path, handler))
+	rt.servers = append(rt.servers, newConnectServer(cfg, path, handler, mat))
 	return rt, nil
 }
 
@@ -136,9 +150,38 @@ func wireRegistry(ctx context.Context, cfg Config, rt *runtime) (*runtime, error
 		return nil, err
 	}
 	reg := localRegistry(database, cfg)
+
+	// When service identity is on, the registry process is also the trust anchor:
+	// it holds the CA, serves the bootstrap enrollment endpoint that issues peers
+	// their identities, and self-issues its own so its placement endpoint runs
+	// under the same mTLS as everyone else.
+	mat, err := newTrustAnchor(cfg, rt)
+	if err != nil {
+		return nil, err
+	}
+
 	path, handler := registryv1connect.NewRegistryServiceHandler(registry.NewConnectHandler(reg))
-	rt.servers = append(rt.servers, newConnectServer(cfg, path, handler))
+	rt.servers = append(rt.servers, newConnectServer(cfg, path, handler, mat))
 	return rt, nil
+}
+
+// newTrustAnchor stands up the enrollment authority on the registry process when
+// service identity is enabled: a fresh CA, the bootstrap enrollment server, and
+// the registry's own self-issued identity. It returns nil material when identity
+// is off, so the registry's placement endpoint runs in cleartext like the rest.
+func newTrustAnchor(cfg Config, rt *runtime) (*service.Material, error) {
+	if !cfg.ServiceIdentity {
+		return nil, nil
+	}
+	ca, err := service.NewCA()
+	if err != nil {
+		return nil, err
+	}
+	anchor := registry.NewTrustAnchor(ca, cfg.BootstrapToken, cfg.IdentityTTL)
+	epath, ehandler := enrollv1connect.NewEnrollServiceHandler(service.NewEnrollHandler(anchor))
+	rt.servers = append(rt.servers, newEnrollServer(cfg, epath, ehandler))
+
+	return service.SelfIssue(ca, serviceName(cfg), cfg.IdentityTTL)
 }
 
 // newGateway assembles the transport-agnostic edge core over the database-backed

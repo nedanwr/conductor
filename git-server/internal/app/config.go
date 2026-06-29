@@ -61,6 +61,30 @@ type Config struct {
 	// registry is consulted again.
 	PlacementCacheTTL time.Duration
 
+	// ServiceIdentity turns on mutual service authentication between split
+	// processes: each node enrolls for a short-lived identity and every internal
+	// call is mTLS. It has no effect co-located (one process, no peer); there the
+	// services reach each other in-process and there is nothing to authenticate.
+	ServiceIdentity bool
+
+	// BootstrapToken is the pre-shared secret gating enrollment. The registry
+	// requires it to issue an identity; every joining node presents it. Empty
+	// refuses all enrollment rather than admitting everyone.
+	BootstrapToken string
+
+	// EnrollAddr is the registry's bootstrap enrollment listen address — the one
+	// internal endpoint reachable without an identity, since a joining node has
+	// none yet. Read only by the registry role.
+	EnrollAddr string
+
+	// EnrollURL is the registry's enrollment endpoint a joining node dials to
+	// obtain its identity. Read by every non-registry role when identity is on.
+	EnrollURL string
+
+	// IdentityTTL is the lifetime of an issued service identity; short by design,
+	// reissued at enrollment and rotation. Read by the registry role (the issuer).
+	IdentityTTL time.Duration
+
 	// LogLevel is the minimum log severity emitted.
 	LogLevel string
 }
@@ -83,6 +107,11 @@ func LoadConfig(mode Mode) Config {
 		TLSCertPath:       os.Getenv("GITSERVER_TLS_CERT"),
 		TLSKeyPath:        os.Getenv("GITSERVER_TLS_KEY"),
 		PlacementCacheTTL: envDuration("GITSERVER_PLACEMENT_CACHE_TTL", 30*time.Second),
+		ServiceIdentity:   os.Getenv("GITSERVER_SERVICE_IDENTITY") == "true",
+		BootstrapToken:    os.Getenv("GITSERVER_BOOTSTRAP_TOKEN"),
+		EnrollAddr:        envOr("GITSERVER_ENROLL_ADDR", ":8444"),
+		EnrollURL:         os.Getenv("GITSERVER_ENROLL_URL"),
+		IdentityTTL:       envDuration("GITSERVER_IDENTITY_TTL", time.Hour),
 		LogLevel:          envOr("GITSERVER_LOG_LEVEL", "info"),
 	}
 }

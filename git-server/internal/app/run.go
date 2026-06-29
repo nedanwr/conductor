@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/nedanwr/conductor/git-server/internal/auth/service"
 	"github.com/nedanwr/conductor/git-server/internal/core/giterr"
 	gwssh "github.com/nedanwr/conductor/git-server/internal/gateway/ssh"
 )
@@ -116,9 +117,14 @@ func (h *httpEdge) name() string { return h.label }
 
 func (h *httpEdge) serve() error {
 	var err error
-	if h.certPath != "" && h.keyPath != "" {
+	switch {
+	case h.srv.TLSConfig != nil:
+		// mTLS connect endpoint: certificates and client-auth policy come from the
+		// configured TLSConfig, so no cert/key paths are passed.
+		err = h.srv.ListenAndServeTLS("", "")
+	case h.certPath != "" && h.keyPath != "":
 		err = h.srv.ListenAndServeTLS(h.certPath, h.keyPath)
-	} else {
+	default:
 		err = h.srv.ListenAndServe()
 	}
 	if errors.Is(err, http.ErrServerClosed) {
@@ -140,12 +146,38 @@ func newHTTPSEdge(cfg Config, handler http.Handler) server {
 }
 
 // newConnectServer builds an internal Connect endpoint serving a single service
-// path over h2c on the configured Connect address. It carries no TLS in the
-// slice; peer mutual auth is the deferred service-identity seam.
-func newConnectServer(cfg Config, path string, handler http.Handler) server {
+// path on the configured Connect address. With identity material it serves mTLS:
+// every caller must present a verified service identity, recovered onto the
+// request before the handler runs. Without material it serves cleartext h2c, the
+// development and single-binary path where there is no peer to authenticate.
+func newConnectServer(cfg Config, path string, handler http.Handler, mat *service.Material) server {
+	if mat == nil {
+		return &httpEdge{
+			label: "connect",
+			srv:   &http.Server{Addr: cfg.ConnectAddr, Handler: connectMux(path, handler)},
+		}
+	}
+	mux := http.NewServeMux()
+	mux.Handle(path, handler)
+	secured := service.ServerMiddleware(service.PeerAnchor{}, mux)
 	return &httpEdge{
 		label: "connect",
-		srv:   &http.Server{Addr: cfg.ConnectAddr, Handler: connectMux(path, handler)},
+		srv: &http.Server{
+			Addr:      cfg.ConnectAddr,
+			Handler:   secured,
+			TLSConfig: mat.ServerTLSConfig(),
+		},
+	}
+}
+
+// newEnrollServer builds the bootstrap enrollment endpoint on the registry's
+// enrollment address. It is deliberately cleartext h2c and outside mTLS: a node
+// enrolling here has no identity yet to present. Access is gated by the bootstrap
+// token the enrollment handler checks, not by the transport.
+func newEnrollServer(cfg Config, path string, handler http.Handler) server {
+	return &httpEdge{
+		label: "enroll",
+		srv:   &http.Server{Addr: cfg.EnrollAddr, Handler: connectMux(path, handler)},
 	}
 }
 
