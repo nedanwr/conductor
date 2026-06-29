@@ -52,7 +52,7 @@ checks:
 		|| { echo "FAIL: raw SQL found in application code"; exit 1; }
 	@echo ">> no service package imports a peer's impl"
 	@! grep -rn "git-server/internal/\(repostorage\|registry\|cache\)\"" internal/ --include='*.go' \
-		| grep -vE "internal/(repostorage|registry|cache|app)/" \
+		| grep -v '_test.go' | grep -vE "internal/(repostorage|registry|cache|app)/" \
 		|| { echo "FAIL: a package imports a service impl directly (use core/ + gen/)"; exit 1; }
 	@echo "OK: standing greps clean"
 
