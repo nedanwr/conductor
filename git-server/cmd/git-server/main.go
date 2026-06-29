@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -15,13 +16,19 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(context.Background(), os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "git-server:", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string) error {
+func run(ctx context.Context, args []string) error {
+	// admin is a run-and-exit verb, not a service role; it is dispatched before
+	// the --mode flag is considered.
+	if len(args) > 0 && args[0] == "admin" {
+		return app.Admin(ctx, args[1:])
+	}
+
 	fs := flag.NewFlagSet("git-server", flag.ContinueOnError)
 	modeStr := fs.String("mode", "all", "runtime role: gateway|repo-storage|cache|registry|all")
 	if err := fs.Parse(args); err != nil {
@@ -33,7 +40,5 @@ func run(args []string) error {
 		return err
 	}
 
-	// No services are wired yet. Acknowledge the selected mode and exit.
-	fmt.Printf("git-server: mode=%s (no services wired yet)\n", mode)
-	return nil
+	return app.Run(ctx, app.LoadConfig(mode))
 }
