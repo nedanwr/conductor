@@ -2,6 +2,9 @@
 # rules are module-relative; the repo-root .gitignore also covers most of them,
 # but keeping them here makes the module's ignores travel with it.
 
+# Internal planning docs (do not commit)
+GIT_SERVER_BUILD_PLAN.md
+
 # Compiled artifact (output of `make build`).
 /bin/
 
