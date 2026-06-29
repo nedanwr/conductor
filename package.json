@@ -11,5 +11,8 @@
     "test": "bun run --filter '*' test",
     "lint": "bun run --filter '*' lint",
     "typecheck": "bun run --filter '*' typecheck"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.3"
   }
 }
